@@ -1,0 +1,657 @@
+:root {
+    --bg-dark: #0D0D12;
+    --bg-card: #181822;
+    --bg-panel: #16161E;
+    --border-color: #2A2A3A;
+    --text-primary: #FFFFFF;
+    --text-secondary: #C0C0D0;
+    --text-muted: #6E6E80;
+    
+    --color-primary: #BB86FC; /* Parkinson */
+    --color-danger: #FF5252;  /* Anemia */
+    --color-success: #2ECC71; /* General / TB */
+    --color-info: #00BCD4;    /* Info / TB alt */
+    --color-warning: #FFB300; /* Warning / Moderate Risk */
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* Background Glow Orbs */
+.glow-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.glow-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+}
+
+.orb-1 {
+    top: -10%;
+    right: 10%;
+    width: 50vw;
+    height: 50vw;
+    background: radial-gradient(circle, var(--color-primary) 0%, transparent 70%);
+}
+
+.orb-2 {
+    bottom: 10%;
+    left: -10%;
+    width: 40vw;
+    height: 40vw;
+    background: radial-gradient(circle, var(--color-info) 0%, transparent 70%);
+}
+
+/* Navbar */
+.navbar {
+    background-color: rgba(13, 13, 18, 0.8);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1rem 2rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo-emoji {
+    font-size: 1.8rem;
+}
+
+.nav-btn {
+    text-decoration: none;
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.nav-btn:hover {
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: var(--border-color);
+}
+
+/* Main Layout */
+.main-content {
+    flex: 1;
+    padding: 2rem 1.5rem;
+    display: flex;
+    align-items: center;
+}
+
+.container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Typography & Titles */
+.page-title {
+    font-size: 2.2rem;
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.page-subtitle {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.title-separator {
+    width: 100px;
+    height: 3px;
+    background-color: var(--color-primary);
+    margin: 0.5rem auto 2rem auto;
+    border-radius: 2px;
+}
+
+/* Disclaimer Page */
+.disclaimer-card {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 2.5rem;
+    max-width: 700px;
+    margin: 0 auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+.disclaimer-icon {
+    font-size: 3rem;
+    color: var(--color-danger);
+    margin-bottom: 1rem;
+}
+
+.disclaimer-text {
+    text-align: left;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 2rem;
+    font-size: 1.05rem;
+}
+
+.disclaimer-text p {
+    margin-bottom: 1rem;
+}
+
+/* Device Selector Group */
+.device-select-group {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    text-align: left;
+}
+
+.device-select-title {
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.select-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.select-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.select-field label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.select-wrapper select {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.75rem;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    outline: none;
+    cursor: pointer;
+    width: 100%;
+}
+
+.select-wrapper select:focus {
+    border-color: var(--color-primary);
+}
+
+/* Cards Dashboard Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background-color: var(--border-color);
+    transition: background-color 0.3s ease;
+}
+
+.card.parkinson-card::before { background-color: var(--color-primary); }
+.card.anemia-card::before { background-color: var(--color-danger); }
+.card.tb-card::before { background-color: var(--color-info); }
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+}
+
+.card.parkinson-card:hover { border-color: var(--color-primary); }
+.card.anemia-card:hover { border-color: var(--color-danger); }
+.card.tb-card:hover { border-color: var(--color-info); }
+
+.card-icon {
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+}
+
+.card-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+}
+
+.card-desc {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 1.5rem;
+    flex-grow: 1;
+}
+
+/* Universal Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 1rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    gap: 0.5rem;
+}
+
+.btn-primary {
+    background-color: var(--color-primary);
+    color: var(--bg-dark);
+}
+
+.btn-primary:hover {
+    background-color: #A26DF8;
+    transform: scale(1.02);
+}
+
+.btn-danger {
+    background-color: var(--color-danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #FF3B3B;
+    transform: scale(1.02);
+}
+
+.btn-success {
+    background-color: var(--color-success);
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #27AE60;
+    transform: scale(1.02);
+}
+
+.btn-secondary {
+    background-color: #22222E;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background-color: #2A2A3A;
+    border-color: #3A3A4A;
+}
+
+.btn-block {
+    width: 100%;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+/* Parkinson Module Hub Grid */
+.parkinson-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+}
+
+.card-sm {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.card-sm:hover {
+    border-color: var(--color-primary);
+}
+
+.card-sm-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0.5rem 0;
+}
+
+.card-sm-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 1.25rem;
+    flex-grow: 1;
+}
+
+/* Layout for tests */
+.test-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+@media (min-width: 900px) {
+    .test-layout {
+        grid-template-columns: 1.3fr 1fr;
+    }
+}
+
+.test-workspace {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.test-controls {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+/* Media Capture Elements */
+.media-container {
+    width: 100%;
+    max-width: 640px;
+    aspect-ratio: 4/3;
+    background-color: #12121A;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.video-feed {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* mirror effect */
+}
+
+.canvas-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+    transform: scaleX(-1); /* mirror matching video feed */
+}
+
+.drawing-canvas {
+    width: 100%;
+    max-width: 480px;
+    aspect-ratio: 460/420;
+    background-color: #1a1a2e;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+    cursor: crosshair;
+    touch-action: none; /* Crucial for mobile drawing compatibility */
+}
+
+/* Instructions and checklist */
+.instruction-box {
+    background-color: rgba(255, 255, 255, 0.02);
+    border-left: 3px solid var(--color-primary);
+    padding: 1rem;
+    border-radius: 0 8px 8px 0;
+}
+
+.instruction-box.anemia-step {
+    border-left-color: var(--color-danger);
+}
+
+.instruction-box.tb-step {
+    border-left-color: var(--color-success);
+}
+
+.checklist {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.checklist-item.checked {
+    color: var(--color-success);
+}
+
+.checklist-item.current {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Status Indicator */
+.status-indicator {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-align: center;
+    letter-spacing: 0.05em;
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+}
+
+.status-scanning {
+    color: var(--color-danger);
+    border-color: rgba(255, 82, 82, 0.3);
+    background-color: rgba(255, 82, 82, 0.05);
+}
+
+.status-detected {
+    color: var(--color-success);
+    border-color: rgba(46, 204, 113, 0.3);
+    background-color: rgba(46, 204, 113, 0.05);
+}
+
+/* Progress bar */
+.progress-container {
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.05);
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    background-color: var(--color-primary);
+    transition: width 0.3s ease;
+}
+
+/* Results Display Box */
+.results-box {
+    background-color: #12121A;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    color: #E0E0F0;
+    white-space: pre-wrap;
+    min-height: 120px;
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+/* Overall Risk Banner */
+.risk-banner {
+    padding: 1.5rem;
+    border-radius: 12px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.risk-healthy {
+    background-color: rgba(46, 204, 113, 0.15);
+    color: var(--color-success);
+    border-color: var(--color-success);
+}
+
+.risk-mild {
+    background-color: rgba(0, 188, 212, 0.15);
+    color: var(--color-info);
+    border-color: var(--color-info);
+}
+
+.risk-moderate {
+    background-color: rgba(255, 179, 0, 0.15);
+    color: var(--color-warning);
+    border-color: var(--color-warning);
+}
+
+.risk-severe {
+    background-color: rgba(255, 82, 82, 0.15);
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+}
+
+/* Matplotlib chart output rendering */
+.analysis-plot {
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    margin-top: 1.5rem;
+}
+
+/* Device Orientation/Scale warnings */
+.orientation-warning {
+    display: none;
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+    /* Handle mobile landscape nicely */
+    .navbar {
+        display: none;
+    }
+    .main-content {
+        padding: 0.5rem;
+    }
+}
+
+/* Footer styling */
+.footer {
+    border-top: 1px solid var(--border-color);
+    padding: 1.5rem;
+    background-color: rgba(13, 13, 18, 0.9);
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.footer-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}

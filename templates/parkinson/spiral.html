@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Spiral Drawing Test — SehatSaathi{% endblock %}
+
+{% block content %}
+<h1 class="page-title">[Spiral] Spiral Drawing Test</h1>
+<p class="page-subtitle">Trace over the guide spiral from the center outward as accurately as possible.</p>
+<div class="title-separator" style="background-color: var(--color-primary);"></div>
+
+<div class="test-layout">
+    <!-- Left column: Drawing canvas -->
+    <div class="test-workspace">
+        <canvas id="drawing-canvas" class="drawing-canvas" width="460" height="420"></canvas>
+        
+        <div style="display: flex; gap: 1rem; width: 100%; max-width: 480px; margin-top: 1rem;">
+            <button id="btn-clear" class="btn btn-secondary btn-block">Clear Canvas</button>
+            <button id="btn-submit" class="btn btn-primary btn-block">Submit Drawing</button>
+        </div>
+    </div>
+
+    <!-- Right column: Instructions & Status -->
+    <div class="test-controls">
+        <div class="instruction-box">
+            <h3 style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-primary);">Instructions:</h3>
+            <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;">
+                1. Use your mouse, trackpad, or touchscreen (on mobile/tablet).<br>
+                2. Press down and draw over the light gray guide spiral.<br>
+                3. Start from the center and draw outward in one continuous motion.<br>
+                4. Maintain a steady hand. Once finished, click "Submit Drawing".
+            </p>
+        </div>
+
+        <div class="status-indicator status-scanning" id="drawing-status">
+            ⏳ READY — START DRAWING FROM CENTER
+        </div>
+
+        <div id="results-display" class="results-box" style="display: none;"></div>
+        
+        <a href="{{ url_for('parkinson_hub') }}" class="btn btn-secondary btn-block">Back to Hub</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const canvas = document.getElementById('drawing-canvas');
+    const ctx = canvas.getContext('2d');
+    const clearBtn = document.getElementById('btn-clear');
+    const submitBtn = document.getElementById('btn-submit');
+    const drawingStatus = document.getElementById('drawing-status');
+    const resultsDisplay = document.getElementById('results-display');
+
+    // Guide spiral coordinates from Python backend
+    const refSpiral = {{ ref_spiral | tojson }};
+    
+    let isDrawing = false;
+    let drawnPoints = [];
+    let lastX = 0;
+    let lastY = 0;
+
+    // Draw reference guide spiral on load
+    function drawReferenceSpiral() {
+        ctx.strokeStyle = '#444455';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        if (refSpiral.length > 0) {
+            ctx.moveTo(refSpiral[0][0], refSpiral[0][1]);
+            for (let i = 1; i < refSpiral.length; i++) {
+                ctx.lineTo(refSpiral[i][0], refSpiral[i][1]);
+            }
+        }
+        ctx.stroke();
+    }
+
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawReferenceSpiral();
+        drawnPoints = [];
+        drawingStatus.className = 'status-indicator status-scanning';
+        drawingStatus.innerText = '⏳ READY — START DRAWING FROM CENTER';
+    }
+
+    // Map screen click coordinates to internal 460x420 coordinates
+    function getCanvasCoordinates(e) {
+        const rect = canvas.getBoundingClientRect();
+        
+        // Handle touch events
+        let clientX = e.clientX;
+        let clientY = e.clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        }
+
+        const x = (clientX - rect.left) * (canvas.width / rect.width);
+        const y = (clientY - rect.top) * (canvas.height / rect.height);
+        return { x, y };
+    }
+
+    function startDrawing(e) {
+        isDrawing = true;
+        const coords = getCanvasCoordinates(e);
+        lastX = coords.x;
+        lastY = coords.y;
+        
+        // Clear previous lines if user starts over
+        if (drawnPoints.length === 0) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawReferenceSpiral();
+        }
+        
+        drawnPoints.push([coords.x, coords.y, Date.now() / 1000]);
+        drawingStatus.innerText = '🖊️ TRACING SPIRAL...';
+        drawingStatus.className = 'status-indicator status-scanning';
+        e.preventDefault();
+    }
+
+    function draw(e) {
+        if (!isDrawing) return;
+        const coords = getCanvasCoordinates(e);
+        
+        // Draw connected line segment (not dots)
+        ctx.strokeStyle = '#BB86FC';
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(coords.x, coords.y);
+        ctx.stroke();
+
+        lastX = coords.x;
+        lastY = coords.y;
+
+        drawnPoints.push([coords.x, coords.y, Date.now() / 1000]);
+        e.preventDefault();
+    }
+
+    function stopDrawing(e) {
+        if (isDrawing) {
+            isDrawing = false;
+            drawingStatus.className = 'status-indicator status-detected';
+            drawingStatus.innerText = '✓ DRAWING COMPLETED';
+        }
+        if (e) e.preventDefault();
+    }
+
+    // Touch event compatibility (Universal)
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDrawing);
+
+    canvas.addEventListener('touchstart', startDrawing, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    window.addEventListener('touchend', stopDrawing);
+
+    clearBtn.addEventListener('click', clearCanvas);
+
+    submitBtn.addEventListener('click', async () => {
+        if (drawnPoints.length < 20) {
+            alert('Please draw a longer spiral.');
+            return;
+        }
+
+        drawingStatus.innerText = '🔬 CLASSIFYING...';
+
+        try {
+            const response = await fetch('/api/parkinson/spiral', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ points: drawnPoints })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                alert(data.error);
+                drawingStatus.innerText = '❌ ERROR';
+                return;
+            }
+
+            // Save results to local storage
+            localStorage.setItem('sehatsaathi_result_spiral', JSON.stringify({
+                score: data.score,
+                deviation: data.deviation
+            }));
+
+            drawingStatus.className = 'status-indicator status-detected';
+            drawingStatus.innerText = '✓ ANALYSIS COMPLETE';
+
+            resultsDisplay.style.display = 'block';
+            resultsDisplay.innerHTML = `Spiral Tracing Score: ${data.score.toFixed(2)}%\n` +
+                                        `Mean Path Deviation: ${data.deviation.toFixed(2)} px\n` +
+                                        `Tremor Power Index: ${data.tremor_index.toFixed(3)}%\n` +
+                                        `Drawing Smoothness: ${data.smoothness_status}`;
+        } catch (err) {
+            console.error('Error submitting drawing:', err);
+            drawingStatus.innerText = '❌ SERVER ERROR';
+        }
+    });
+
+    // Initialize guide spiral drawing
+    drawReferenceSpiral();
+</script>
+{% endblock %}

@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}Voice Test — SehatSaathi{% endblock %}
+
+{% block content %}
+<h1 class="page-title">[Voice] Voice Stability Test</h1>
+<p class="page-subtitle">Record a steady "AAAAA" or any vowel sound for 5 seconds to analyze voice stability metrics.</p>
+<div class="title-separator" style="background-color: var(--color-primary);"></div>
+
+<div class="test-layout">
+    <!-- Left column: Microphone status and visualizer -->
+    <div class="test-workspace">
+        <div class="media-container" style="flex-direction: column; justify-content: center; gap: 1rem; padding: 2rem;">
+            <div id="mic-emoji" style="font-size: 4rem; transition: transform 0.1s ease;">🎤</div>
+            <div id="countdown-overlay" style="font-size: 2rem; font-weight: bold; display: none;">Ready...</div>
+            <canvas id="audio-wave-canvas" style="width: 100%; height: 100px; background-color: rgba(255,255,255,0.02); border-radius: 8px;"></canvas>
+        </div>
+        <div class="status-indicator status-scanning" id="mic-status" style="margin-top: 1rem; width: 100%;">
+            ⏳ INITIALIZING MICROPHONE...
+        </div>
+    </div>
+
+    <!-- Right column: Controls & Progress -->
+    <div class="test-controls">
+        <div class="instruction-box">
+            <h3 style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-primary);">Instructions:</h3>
+            <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;">
+                1. Ensure you are in a quiet room.<br>
+                2. Click "Start Recording".<br>
+                3. After a 3-second countdown, say a steady, constant, and clear "AAAAA" vowel sound into your microphone.<br>
+                4. Maintain the pitch and loudness as steadily as possible for the full 5 seconds.
+            </p>
+        </div>
+
+        <div class="progress-container">
+            <div id="test-progress-bar" class="progress-bar" style="background-color: var(--color-primary);"></div>
+        </div>
+        <div id="timer-label" style="font-weight: bold; text-align: center;">Ready to record</div>
+
+        <div style="display: flex; gap: 1rem;">
+            <button id="btn-record" class="btn btn-primary btn-block">
+                🎤 Start Recording
+            </button>
+            <a href="{{ url_for('parkinson_hub') }}" class="btn btn-secondary btn-block">Back to Hub</a>
+        </div>
+
+        <div id="results-display" class="results-box" style="display: none;"></div>
+        <img id="results-plot" class="analysis-plot" style="display: none;" alt="Voice Stability Plot">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const micStatus = document.getElementById('mic-status');
+    const recordBtn = document.getElementById('btn-record');
+    const progressBar = document.getElementById('test-progress-bar');
+    const timerLabel = document.getElementById('timer-label');
+    const resultsDisplay = document.getElementById('results-display');
+    const resultsPlot = document.getElementById('results-plot');
+    const countdownOverlay = document.getElementById('countdown-overlay');
+    const micEmoji = document.getElementById('mic-emoji');
+    
+    // Wave visualizer
+    const waveCanvas = document.getElementById('audio-wave-canvas');
+    const waveCtx = waveCanvas.getContext('2d');
+
+    let micStream;
+    let audioCtx;
+    let analyser;
+    let visualDataArray;
+    let isVisualizing = false;
+    let testActive = false;
+    let recordingBuffers = [];
+
+    // Load preferred mic
+    const preferredMicId = localStorage.getItem('sehatsaathi_preferred_mic');
+
+    // Get microphone permission
+    async function initMic() {
+        try {
+            const constraints = {
+                audio: preferredMicId ? { deviceId: { exact: preferredMicId } } : true,
+                video: false
+            };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            micStream = stream;
+            
+            // Set up audio visualization
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioCtx.createMediaStreamSource(stream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            
+            const bufferLength = analyser.frequencyBinCount;
+            visualDataArray = new Uint8Array(bufferLength);
+
+            recordBtn.removeAttribute('disabled');
+            micStatus.className = 'status-indicator status-detected';
+            micStatus.innerText = '✓ MICROPHONE ACTIVE';
+            
+            isVisualizing = true;
+            drawVisualizer();
+        } catch (err) {
+            console.error('Mic access denied:', err);
+            micStatus.className = 'status-indicator status-scanning';
+            micStatus.innerText = '❌ MIC ERROR: ' + err.message;
+        }
+    }
+
+    function drawVisualizer() {
+        if (!isVisualizing) return;
+        requestAnimationFrame(drawVisualizer);
+        
+        analyser.getByteFrequencyData(visualDataArray);
+        
+        waveCtx.fillStyle = '#0D0D12';
+        waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
+        
+        const barWidth = (waveCanvas.width / visualDataArray.length) * 1.5;
+        let x = 0;
+        
+        let avgAmplitude = 0;
+
+        for (let i = 0; i < visualDataArray.length; i++) {
+            const barHeight = (visualDataArray[i] / 255) * waveCanvas.height;
+            avgAmplitude += visualDataArray[i];
+
+            waveCtx.fillStyle = `hsl(${260 + (visualDataArray[i]/255)*60}, 80%, 60%)`;
+            waveCtx.fillRect(x, waveCanvas.height - barHeight, barWidth - 2, barHeight);
+            
+            x += barWidth;
+        }
+
+        avgAmplitude = avgAmplitude / visualDataArray.length;
+        const scaleVal = 1 + (avgAmplitude / 255) * 0.4;
+        micEmoji.style.transform = `scale(${scaleVal})`;
+    }
+
+    initMic();
+
+    recordBtn.addEventListener('click', async () => {
+        if (!micStream) {
+            resultsDisplay.style.display = 'block';
+            resultsDisplay.innerHTML = 'Initializing microphone, please allow permission...';
+            await initMic();
+            if (!micStream) {
+                resultsDisplay.innerHTML = 'Failed to access microphone. Please check permissions and try again.';
+                return;
+            }
+        }
+        recordBtn.setAttribute('disabled', 'true');
+        resultsDisplay.style.display = 'none';
+        resultsPlot.style.display = 'none';
+        countdownOverlay.style.display = 'block';
+        
+        let countdown = 3;
+        countdownOverlay.innerText = `Recording starts in ${countdown}...`;
+        
+        const countdownInterval = setInterval(() => {
+            countdown--;
+            if (countdown > 0) {
+                countdownOverlay.innerText = `Recording starts in ${countdown}...`;
+            } else {
+                clearInterval(countdownInterval);
+                countdownOverlay.style.display = 'none';
+                startRecording();
+            }
+        }, 1000);
+    });
+
+    let recAudioCtx;
+    let recSource;
+    let recProcessor;
+
+    function startRecording() {
+        recordingBuffers = [];
+        testActive = true;
+        
+        // Setup recording audio context at 22050Hz for identical signal properties
+        recAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 22050 });
+        recSource = recAudioCtx.createMediaStreamSource(micStream);
+        recProcessor = recAudioCtx.createScriptProcessor(4096, 1, 1);
+
+        recSource.connect(recProcessor);
+        recProcessor.connect(recAudioCtx.destination);
+
+        recProcessor.onaudioprocess = (e) => {
+            if (!testActive) return;
+            const channelData = e.inputBuffer.getChannelData(0);
+            recordingBuffers.push(new Float32Array(channelData));
+        };
+
+        micStatus.className = 'status-indicator status-scanning';
+        micStatus.innerText = '🎙️ RECORDING VOWEL...';
+        
+        let elapsed = 0;
+        const duration = 5.0; // 5s voice test
+        
+        const recordInterval = setInterval(() => {
+            elapsed += 0.1;
+            const remaining = Math.max(0, duration - elapsed);
+            progressBar.style.width = `${(elapsed / duration) * 100}%`;
+            timerLabel.innerText = `Say AAAAA... ${remaining.toFixed(1)}s remaining`;
+
+            if (elapsed >= duration) {
+                clearInterval(recordInterval);
+                stopRecording();
+            }
+        }, 100);
+    }
+
+    function stopRecording() {
+        testActive = false;
+        
+        if (recProcessor) {
+            recProcessor.disconnect();
+            recSource.disconnect();
+            recAudioCtx.close();
+        }
+
+        // Compile Float32Array buffer
+        let totalLength = 0;
+        for (const buf of recordingBuffers) {
+            totalLength += buf.length;
+        }
+        const mergedSamples = new Float32Array(totalLength);
+        let offset = 0;
+        for (const buf of recordingBuffers) {
+            mergedSamples.set(buf, offset);
+            offset += buf.length;
+        }
+
+        // Convert to standard WAV blob
+        const wavBlob = encodeWAV(mergedSamples, 22050);
+        uploadAudio(wavBlob);
+    }
+
+    // Standard client-side WAV encoding helper
+    function encodeWAV(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); // Linear PCM
+        view.setUint16(22, 1, true); // Mono
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true); // Block align
+        view.setUint16(34, 16, true); // 16-bit
+        writeString(view, 36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+
+        for (let i = 0; i < samples.length; i++) {
+            let s = Math.max(-1, Math.min(1, samples[i]));
+            view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+
+        return new Blob([view], { type: 'audio/wav' });
+    }
+
+    function writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    }
+
+    async function uploadAudio(wavBlob) {
+        micStatus.innerText = '🔬 ANALYZING COUGH/VOICE...';
+        timerLabel.innerText = 'Processing analysis...';
+        
+        const formData = new FormData();
+        formData.append('audio', wavBlob, 'voice.wav');
+
+        try {
+            const response = await fetch('/api/parkinson/voice', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                micStatus.innerText = '❌ ANALYSIS ERROR';
+                alert(data.error);
+                recordBtn.removeAttribute('disabled');
+                return;
+            }
+
+            // Save results to local storage
+            localStorage.setItem('sehatsaathi_result_voice', JSON.stringify({
+                score: data.score,
+                jitter: data.jitter,
+                shimmer: data.shimmer,
+                hnr: data.hnr
+            }));
+
+            micStatus.className = 'status-indicator status-detected';
+            micStatus.innerText = '✓ SCREENING COMPLETE';
+            timerLabel.innerText = 'Voice test finished';
+            
+            resultsDisplay.style.display = 'block';
+            resultsDisplay.innerHTML = `Voice Stability Score: ${data.score.toFixed(2)}%\n` +
+                                        `Jitter (local): ${data.jitter.toFixed(3)}%\n` +
+                                        `Shimmer (local): ${data.shimmer.toFixed(3)}%\n` +
+                                        `Harmonics-to-Noise Ratio: ${data.hnr.toFixed(2)} dB`;
+
+            if (data.plot) {
+                resultsPlot.style.display = 'block';
+                resultsPlot.src = `data:image/png;base64,${data.plot}`;
+            }
+
+            recordBtn.removeAttribute('disabled');
+        } catch (err) {
+            console.error('Error uploading voice data:', err);
+            micStatus.innerText = '❌ SERVER ERROR';
+            recordBtn.removeAttribute('disabled');
+        }
+    }
+</script>
+{% endblock %}

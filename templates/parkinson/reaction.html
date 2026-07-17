@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}Reaction Test — SehatSaathi{% endblock %}
+
+{% block content %}
+<h1 class="page-title">[Reaction] Interactive Reaction Test</h1>
+<p class="page-subtitle">Quickly hover your mouse/cursor over the red target circles as they appear on the screen.</p>
+<div class="title-separator" style="background-color: var(--color-primary);"></div>
+
+<div class="test-layout">
+    <!-- Left column: Click target workspace -->
+    <div class="test-workspace">
+        <div class="media-container" style="max-width: 640px; aspect-ratio: 4/3; background-color: #12121A;">
+            <canvas id="canvas-overlay" class="canvas-overlay" width="640" height="480" style="position: relative; pointer-events: auto; transform: none;"></canvas>
+        </div>
+        <div class="status-indicator status-detected" id="workspace-status" style="margin-top: 1rem; width: 100%;">
+            ✓ TEST SYSTEM READY
+        </div>
+    </div>
+
+    <!-- Right column: Controls & Progress -->
+    <div class="test-controls">
+        <div class="instruction-box">
+            <h3 style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-primary);">Instructions:</h3>
+            <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;">
+                1. Click "Start Test" and keep your cursor inside the black test workspace area.<br>
+                2. A countdown delay will initiate, after which a red target circle will spawn.<br>
+                3. Rapidly move your cursor to hover over/touch the red circle.<br>
+                4. Complete all 10 trials.
+            </p>
+        </div>
+
+        <div class="status-indicator status-scanning" id="trial-indicator" style="display: none;">
+            Trial 1/10
+        </div>
+
+        <div style="display: flex; gap: 1rem;">
+            <button id="btn-start" class="btn btn-primary btn-block">
+                Start Test
+            </button>
+            <a href="{{ url_for('parkinson_hub') }}" class="btn btn-secondary btn-block">Back to Hub</a>
+        </div>
+
+        <div id="results-display" class="results-box" style="display: none;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const canvas = document.getElementById('canvas-overlay');
+    const ctx = canvas.getContext('2d');
+    const workspaceStatus = document.getElementById('workspace-status');
+    const startBtn = document.getElementById('btn-start');
+    const trialIndicator = document.getElementById('trial-indicator');
+    const resultsDisplay = document.getElementById('results-display');
+
+    let testActive = false;
+    let currentTrial = 0;
+    const numTrials = 10;
+    
+    let latencies = [];
+    let mousePaths = [];
+    let currentPath = [];
+    
+    let targetX = 320;
+    let targetY = 240;
+    const targetRadius = 25;
+    let trialStartTime = 0;
+    let waitingForTarget = false;
+    let targetSpawned = false;
+    let timerTimeout;
+
+    // Draw reference guides/targets onto canvas
+    function drawLoop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (targetSpawned) {
+            // Draw red circle target
+            ctx.beginPath();
+            ctx.arc(targetX, targetY, targetRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#e74c3c';
+            ctx.strokeStyle = '#ff6b6b';
+            ctx.lineWidth = 3;
+            ctx.fill();
+            ctx.stroke();
+
+            // Inner white dot
+            ctx.beginPath();
+            ctx.arc(targetX, targetY, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+        } else if (!testActive) {
+            // Idle background message
+            ctx.fillStyle = '#6E6E80';
+            ctx.font = '18px Outfit';
+            ctx.textAlign = 'center';
+            ctx.fillText('Click "Start Test" to Begin', canvas.width / 2, canvas.height / 2);
+        }
+
+        requestAnimationFrame(drawLoop);
+    }
+
+    drawLoop();
+
+    startBtn.addEventListener('click', () => {
+        if (testActive) return;
+        testActive = true;
+        currentTrial = 0;
+        latencies = [];
+        mousePaths = [];
+        startBtn.setAttribute('disabled', 'true');
+        resultsDisplay.style.display = 'none';
+        trialIndicator.style.display = 'block';
+        workspaceStatus.className = 'status-indicator status-scanning';
+        workspaceStatus.innerText = '🎙️ TARGET SPOTTING RUNNING';
+
+        nextTrial();
+    });
+
+    function nextTrial() {
+        targetSpawned = false;
+        if (currentTrial >= numTrials) {
+            finishTest();
+            return;
+        }
+
+        trialIndicator.innerText = `Trial ${currentTrial + 1}/${numTrials} — GET READY...`;
+        trialIndicator.className = 'status-indicator status-scanning';
+        waitingForTarget = true;
+
+        // Random delay between 0.7s and 2.2s
+        const delay = Math.random() * (2200 - 700) + 700;
+        timerTimeout = setTimeout(spawnTarget, delay);
+    }
+
+    function spawnTarget() {
+        if (!testActive) return;
+        
+        // Target coordinates well inside bounds
+        targetX = Math.floor(Math.random() * (560 - 80) + 80);
+        targetY = Math.floor(Math.random() * (400 - 80) + 80);
+        
+        currentPath = [];
+        waitingForTarget = false;
+        targetSpawned = true;
+        trialStartTime = Date.now();
+        
+        trialIndicator.innerText = '🎯 TOUCH TARGET!';
+        trialIndicator.className = 'status-indicator status-detected';
+    }
+
+    // Map screen cursor movements
+    function getCanvasCoordinates(e) {
+        const rect = canvas.getBoundingClientRect();
+        
+        // Touch or Mouse
+        let clientX = e.clientX;
+        let clientY = e.clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        }
+
+        const x = (clientX - rect.left) * (canvas.width / rect.width);
+        const y = (clientY - rect.top) * (canvas.height / rect.height);
+        return { x, y };
+    }
+
+    function trackPointer(e) {
+        if (!testActive || !targetSpawned || waitingForTarget) return;
+
+        const coords = getCanvasCoordinates(e);
+        currentPath.push([coords.x, coords.y, Date.now() / 1000]);
+
+        // Distance from cursor to target center
+        const dx = coords.x - targetX;
+        const dy = coords.y - targetY;
+        const distSq = dx*dx + dy*dy;
+
+        // Target touch/hover checks
+        if (distSq <= Math.pow(targetRadius + 20, 2)) {
+            targetSpawned = false;
+            const latency = Date.now() - trialStartTime; // milliseconds
+            latencies.push(latency);
+            mousePaths.push(currentPath);
+            currentTrial++;
+            
+            nextTrial();
+        }
+    }
+
+    canvas.addEventListener('mousemove', trackPointer);
+    canvas.addEventListener('touchmove', trackPointer, { passive: true });
+
+    async function finishTest() {
+        testActive = false;
+        clearTimeout(timerTimeout);
+        trialIndicator.style.display = 'none';
+        workspaceStatus.innerText = '🔬 CALCULATING RISK...';
+
+        try {
+            const response = await fetch('/api/parkinson/reaction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ latencies, mouse_paths: mousePaths })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                alert(data.error);
+                workspaceStatus.innerText = '❌ ERROR';
+                startBtn.removeAttribute('disabled');
+                return;
+            }
+
+            // Save results to local storage
+            localStorage.setItem('sehatsaathi_result_reaction', JSON.stringify({
+                score: data.score,
+                mean_latency: data.mean_latency
+            }));
+
+            workspaceStatus.className = 'status-indicator status-detected';
+            workspaceStatus.innerText = '✓ SCREENING COMPLETE';
+
+            resultsDisplay.style.display = 'block';
+            resultsDisplay.innerHTML = `Reaction Test Score: ${data.score.toFixed(2)}%\n` +
+                                        `Mean Latency: ${data.mean_latency.toFixed(2)} ms`;
+
+            startBtn.removeAttribute('disabled');
+        } catch (err) {
+            console.error('Error submitting reaction test:', err);
+            workspaceStatus.innerText = '❌ SERVER ERROR';
+            startBtn.removeAttribute('disabled');
+        }
+    }
+</script>
+{% endblock %}

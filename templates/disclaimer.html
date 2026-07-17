@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Medical Disclaimer & Setup — SehatSaathi{% endblock %}
+
+{% block content %}
+<div class="disclaimer-card">
+    <div class="disclaimer-icon">⚕️</div>
+    <h1 class="page-title" style="margin-bottom: 1.5rem;">Medical Disclaimer</h1>
+    
+    <div class="disclaimer-text">
+        <p><strong>Sehat Sathi is a screening tool, not a diagnostic device.</strong> It uses computer vision and audio analysis to estimate risk indicators for Parkinson's, Anemia, and Tuberculosis. It does not replace a clinical diagnosis, blood test, or examination by a licensed doctor.</p>
+        <p>Results shown are probabilistic risk estimates, not medical facts. Ensure good lighting and a quiet environment for best accuracy.</p>
+        <p>If this tool flags any risk — mild, moderate, or severe — please consult a qualified medical professional for proper testing and diagnosis.</p>
+        <p>By continuing, you acknowledge this app is for educational/screening purposes only.</p>
+    </div>
+
+    <!-- Device setup section -->
+    <div class="device-select-group">
+        <div class="device-select-title">
+            <span>📷</span> Device Configuration
+        </div>
+        <div class="select-wrapper">
+            <div class="select-field">
+                <label for="camera-select">Camera Device</label>
+                <select id="camera-select">
+                    <option value="">Scan cameras...</option>
+                </select>
+            </div>
+            <div class="select-field" style="margin-top: 0.5rem;">
+                <label for="mic-select">Microphone Device</label>
+                <select id="mic-select">
+                    <option value="">Scan microphones...</option>
+                </select>
+            </div>
+        </div>
+        <button id="btn-request-perms" class="btn btn-secondary btn-block" style="margin-top: 1rem; font-size: 0.9rem;">
+            Request Camera & Mic Access
+        </button>
+    </div>
+
+    <button id="btn-accept" class="btn btn-success btn-block" style="font-size: 1.1rem; padding: 1rem;">
+        I Understand — Continue
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const cameraSelect = document.getElementById('camera-select');
+    const micSelect = document.getElementById('mic-select');
+    const requestPermsBtn = document.getElementById('btn-request-perms');
+    const acceptBtn = document.getElementById('btn-accept');
+
+    // Fetch device permissions and enumerate
+    async function setupDevices() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            // Close stream immediately after getting permissions
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Enumerate
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            
+            // Populate camera select
+            cameraSelect.innerHTML = '';
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            if (videoDevices.length === 0) {
+                cameraSelect.innerHTML = '<option value="">No cameras found</option>';
+            } else {
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Camera ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                });
+            }
+
+            // Populate mic select
+            micSelect.innerHTML = '';
+            const audioDevices = devices.filter(device => device.kind === 'audioinput');
+            if (audioDevices.length === 0) {
+                micSelect.innerHTML = '<option value="">No microphones found</option>';
+            } else {
+                audioDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Microphone ${index + 1}`;
+                    micSelect.appendChild(option);
+                });
+            }
+
+            // Save selected device IDs to localStorage
+            cameraSelect.onchange = () => {
+                localStorage.setItem('sehatsaathi_preferred_camera', cameraSelect.value);
+            };
+            micSelect.onchange = () => {
+                localStorage.setItem('sehatsaathi_preferred_mic', micSelect.value);
+            };
+            
+            // Save initial values
+            if (cameraSelect.value) localStorage.setItem('sehatsaathi_preferred_camera', cameraSelect.value);
+            if (micSelect.value) localStorage.setItem('sehatsaathi_preferred_mic', micSelect.value);
+
+            requestPermsBtn.style.display = 'none';
+        } catch (err) {
+            console.error('Permission denied or error finding devices:', err);
+            cameraSelect.innerHTML = '<option value="">Permission Denied</option>';
+            micSelect.innerHTML = '<option value="">Permission Denied</option>';
+        }
+    }
+
+    requestPermsBtn.addEventListener('click', setupDevices);
+
+    // Auto scan if permission was already granted previously
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+        const hasLabels = devices.some(device => device.label);
+        if (hasLabels) {
+            setupDevices();
+        }
+    });
+
+    acceptBtn.addEventListener('click', async () => {
+        const response = await fetch('/accept-disclaimer', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            window.location.href = '/menu';
+        }
+    });
+</script>
+{% endblock %}

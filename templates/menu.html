@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — SehatSaathi{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Disease Screening Hub</h1>
+<p class="page-subtitle">Select a multi-disease screening module to begin the assessment.</p>
+<div class="title-separator"></div>
+
+<div class="dashboard-grid">
+    <!-- Parkinson's Card -->
+    <div class="card parkinson-card" onclick="window.location.href='{{ url_for('parkinson_hub') }}'">
+        <div class="card-icon">🧠</div>
+        <h2 class="card-title">Parkinson's Screening</h2>
+        <p class="card-desc">Multi-modal neurological screening: finger tapping dexterity, voice speech patterns, Archimedean spiral coordination, and reaction latency.</p>
+        <a href="{{ url_for('parkinson_hub') }}" class="btn btn-primary" style="width: 100%;">Launch Module</a>
+    </div>
+
+    <!-- Anemia Card -->
+    <div class="card anemia-card" onclick="window.location.href='{{ url_for('anemia_scanner') }}'">
+        <div class="card-icon">🩸</div>
+        <h2 class="card-title">Anemia Detection</h2>
+        <p class="card-desc">Non-invasive CV-based conjunctiva and palm pallor analysis. Normalizes against sclera white-balancing reference to estimate anemia risk bands.</p>
+        <a href="{{ url_for('anemia_scanner') }}" class="btn btn-danger" style="width: 100%;">Launch Module</a>
+    </div>
+
+    <!-- TB Card -->
+    <div class="card tb-card" onclick="window.location.href='{{ url_for('tb_analyzer') }}'">
+        <div class="card-icon">🫁</div>
+        <h2 class="card-title">Tuberculosis Screening</h2>
+        <p class="card-desc">Cough audio spectral analysis. Extracts MFCC features, spectral flatness, and centroid metrics from microphone recording to evaluate TB risk.</p>
+        <a href="{{ url_for('tb_analyzer') }}" class="btn btn-success" style="width: 100%;">Launch Module</a>
+    </div>
+</div>
+{% endblock %}

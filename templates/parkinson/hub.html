@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Parkinson's Screening Hub — SehatSaathi{% endblock %}
+
+{% block content %}
+<h1 class="page-title">[Neuro] Parkinson's Screening Hub</h1>
+<p class="page-subtitle">Complete all four neurological tests below to calculate your overall health index.</p>
+<div class="title-separator" style="background-color: var(--color-primary);"></div>
+
+<div class="test-layout">
+    <!-- Left column: Sub-tests -->
+    <div class="test-controls" style="gap: 1.5rem;">
+        <div class="progress-container">
+            <div id="hub-progress" class="progress-bar" style="background-color: var(--color-primary);"></div>
+        </div>
+        <div id="hub-progress-text" style="font-size: 0.95rem; color: var(--text-secondary); margin-top: -1rem;">
+            0 of 4 tests completed
+        </div>
+
+        <div class="parkinson-grid" style="grid-template-columns: 1fr; gap: 1rem;">
+            <!-- Motor Test -->
+            <div class="card-sm" style="flex-direction: row; justify-content: space-between; text-align: left; align-items: center; padding: 1.25rem;">
+                <div>
+                    <h3 class="card-sm-title">[Motor] Finger Tapping Test</h3>
+                    <p class="card-sm-desc" style="margin-bottom: 0;">Test finger dexterity & amplitude decrement via camera.</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <span id="score-motor" class="status-indicator">Not Started</span>
+                    <a href="{{ url_for('motor_test') }}" class="btn btn-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">Start</a>
+                </div>
+            </div>
+
+            <!-- Voice Test -->
+            <div class="card-sm" style="flex-direction: row; justify-content: space-between; text-align: left; align-items: center; padding: 1.25rem;">
+                <div>
+                    <h3 class="card-sm-title">[Voice] Voice Test</h3>
+                    <p class="card-sm-desc" style="margin-bottom: 0;">Analyze steady vowel sound jitter, shimmer & HNR stability.</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <span id="score-voice" class="status-indicator">Not Started</span>
+                    <a href="{{ url_for('voice_test') }}" class="btn btn-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">Start</a>
+                </div>
+            </div>
+
+            <!-- Spiral Test -->
+            <div class="card-sm" style="flex-direction: row; justify-content: space-between; text-align: left; align-items: center; padding: 1.25rem;">
+                <div>
+                    <h3 class="card-sm-title">[Spiral] Spiral Drawing Test</h3>
+                    <p class="card-sm-desc" style="margin-bottom: 0;">Drawing coordination, tremor frequency & deviation analysis.</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <span id="score-spiral" class="status-indicator">Not Started</span>
+                    <a href="{{ url_for('spiral_test') }}" class="btn btn-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">Start</a>
+                </div>
+            </div>
+
+            <!-- Reaction Test -->
+            <div class="card-sm" style="flex-direction: row; justify-content: space-between; text-align: left; align-items: center; padding: 1.25rem;">
+                <div>
+                    <h3 class="card-sm-title">[Reaction] Reaction Test</h3>
+                    <p class="card-sm-desc" style="margin-bottom: 0;">Interactive mouse/touch targets speed & coordination latency.</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <span id="score-reaction" class="status-indicator">Not Started</span>
+                    <a href="{{ url_for('reaction_test') }}" class="btn btn-primary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">Start</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right column: Combined Index & Detailed Readings -->
+    <div class="test-controls" style="justify-content: flex-start;">
+        <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 0.5rem;">Overall Results</h2>
+        <p style="font-size: 0.95rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            This is a screening estimate, not a diagnosis. Please consult a doctor for confirmation.
+        </p>
+
+        <div id="risk-banner-container">
+            <!-- Dynamically populated overall index -->
+            <div class="status-indicator" style="padding: 1.5rem; text-align: center; color: var(--text-muted);">
+                Complete all tests to calculate index
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 1rem;">
+            <button id="btn-calculate" class="btn btn-success btn-block" disabled>
+                Calculate Health Index
+            </button>
+            <button id="btn-readings" class="btn btn-secondary btn-block" disabled>
+                Detailed Readings
+            </button>
+        </div>
+
+        <button id="btn-reset-all" class="btn btn-secondary btn-block" style="margin-top: 1rem; border-color: rgba(255,82,82,0.3); color: var(--color-danger);">
+            Reset All Sub-Tests
+        </button>
+
+        <h3 style="font-size: 1.1rem; font-weight: 600; margin-top: 1rem;">Clinical Summary:</h3>
+        <div id="detailed-readings-box" class="results-box" style="flex-grow: 1; min-height: 150px;">
+            No readings collected yet. Run tests to see data.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const tests = ['motor', 'voice', 'spiral', 'reaction'];
+        let completedCount = 0;
+
+        // Load values from localStorage
+        tests.forEach(test => {
+            const dataStr = localStorage.getItem(`sehatsaathi_result_${test}`);
+            const indicator = document.getElementById(`score-${test}`);
+            if (dataStr) {
+                const data = JSON.parse(dataStr);
+                indicator.innerText = `${data.score.toFixed(2)}%`;
+                indicator.classList.remove('status-indicator');
+                indicator.style.color = 'var(--color-success)';
+                indicator.style.fontWeight = 'bold';
+                completedCount++;
+            }
+        });
+
+        const progressPercent = (completedCount / 4) * 100;
+        document.getElementById('hub-progress').style.width = `${progressPercent}%`;
+        document.getElementById('hub-progress-text').innerText = `${completedCount} of 4 tests completed`;
+
+        const calcBtn = document.getElementById('btn-calculate');
+        const readingsBtn = document.getElementById('btn-readings');
+        const resetBtn = document.getElementById('btn-reset-all');
+
+        if (completedCount === 4) {
+            calcBtn.removeAttribute('disabled');
+            readingsBtn.removeAttribute('disabled');
+        }
+
+        calcBtn.addEventListener('click', async () => {
+            const motor = JSON.parse(localStorage.getItem('sehatsaathi_result_motor')).score;
+            const voice = JSON.parse(localStorage.getItem('sehatsaathi_result_voice')).score;
+            const spiral = JSON.parse(localStorage.getItem('sehatsaathi_result_spiral')).score;
+            const reaction = JSON.parse(localStorage.getItem('sehatsaathi_result_reaction')).score;
+
+            const response = await fetch('/api/parkinson/overall', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ motor, voice, spiral, reaction })
+            });
+
+            const data = await response.json();
+            
+            // Render overall banner
+            let bannerClass = 'risk-healthy';
+            if (data.status === 'GOOD') bannerClass = 'risk-mild';
+            else if (data.status === 'FAIR') bannerClass = 'risk-moderate';
+            else if (data.status === 'Needs Attention') bannerClass = 'risk-severe';
+
+            const bannerHtml = `
+                <div class="risk-banner ${bannerClass}">
+                    NEUROLOGICAL HEALTH INDEX: ${data.score.toFixed(2)}%<br>
+                    <span style="font-size: 1rem; font-weight: 500;">Status: ${data.status}</span>
+                </div>
+            `;
+            document.getElementById('risk-banner-container').innerHTML = bannerHtml;
+        });
+
+        readingsBtn.addEventListener('click', () => {
+            const motorData = JSON.parse(localStorage.getItem('sehatsaathi_result_motor'));
+            const voiceData = JSON.parse(localStorage.getItem('sehatsaathi_result_voice'));
+            const spiralData = JSON.parse(localStorage.getItem('sehatsaathi_result_spiral'));
+            const reactionData = JSON.parse(localStorage.getItem('sehatsaathi_result_reaction'));
+
+            const readingsHtml = `=========================================
+        DETAILED CLINICAL READINGS
+=========================================
+
+Motor Finger Tapping:
+  - Amplitude Decrement: ${motorData.decrement ? motorData.decrement.toFixed(2) : '0.00'}% (Threshold: 30.0%)
+  - Tapping Speed:      ${motorData.speed ? motorData.speed.toFixed(2) : '0.00'} taps/sec
+
+Voice Stability:
+  - Jitter (local):     ${voiceData.jitter ? voiceData.jitter.toFixed(3) : '0.000'}% (Threshold: 1.04%)
+  - Shimmer (local):    ${voiceData.shimmer ? voiceData.shimmer.toFixed(3) : '0.000'}% (Threshold: 3.81%)
+  - HNR:                ${voiceData.hnr ? voiceData.hnr.toFixed(2) : '0.00'} dB (Threshold: 20.0 dB)
+
+Spiral Tracing:
+  - Mean Deviation:     ${spiralData.deviation ? spiralData.deviation.toFixed(2) : '0.00'} pixels
+
+Reaction Latency:
+  - Mean Latency:       ${reactionData.mean_latency ? reactionData.mean_latency.toFixed(2) : '0.00'} ms (Threshold: 950 ms)
+=========================================`;
+
+            document.getElementById('detailed-readings-box').innerText = readingsHtml;
+        });
+
+        resetBtn.addEventListener('click', () => {
+            tests.forEach(test => localStorage.removeItem(`sehatsaathi_result_${test}`));
+            window.location.reload();
+        });
+    });
+</script>
+{% endblock %}

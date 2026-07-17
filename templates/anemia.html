@@ -1,0 +1,485 @@
+{% extends "base.html" %}
+
+{% block title %}Anemia Scanner — SehatSaathi{% endblock %}
+
+{% block content %}
+<h1 class="page-title">🩸 Anemia Conjunctiva Scanner</h1>
+<p class="page-subtitle">Multispectral Pallor Assessment Screen using computer vision.</p>
+<div class="title-separator" style="background-color: var(--color-danger);"></div>
+
+<div class="test-layout">
+    <!-- Left column: Webcam stream -->
+    <div class="test-workspace" style="border-color: var(--color-danger);">
+        <div class="media-container" style="max-width: 640px; aspect-ratio: 4/3; position: relative;">
+            <video id="video-feed" class="video-feed" autoplay playsinline style="transform: scaleX(-1);"></video>
+            <canvas id="landmark-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; transform: scaleX(-1);"></canvas>
+            <img id="capture-preview" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 5; border-radius: 8px;" alt="Captured ROI Preview">
+            <canvas id="snapshot-canvas" style="display: none;"></canvas>
+        </div>
+        <div class="status-indicator status-scanning" id="camera-status" style="margin-top: 1rem; width: 100%;">
+            ⏳ INITIALIZING CAMERA...
+        </div>
+    </div>
+
+    <!-- Right column: Step instructions and checklist -->
+    <div class="test-controls">
+        <div class="instruction-box anemia-step" id="instruction-card">
+            <h3 id="step-title" style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-danger);">Current Step: Palm Scan</h3>
+            <p id="step-desc" style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;">
+                Position your palm flat in the camera frame. Keep it steady.
+            </p>
+        </div>
+
+        <ul class="checklist">
+            <li id="check-palm" class="checklist-item current">○ Palm Scan</li>
+            <li id="check-nail" class="checklist-item">○ Nail Scan</li>
+            <li id="check-conjunctiva" class="checklist-item">○ Conjunctiva Scan</li>
+        </ul>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <button id="btn-capture" class="btn btn-danger">📸 Capture Scan</button>
+            <button id="btn-reset" class="btn btn-secondary">🔄 Reset</button>
+        </div>
+        <button id="btn-calculate" class="btn btn-success btn-block">📊 Calculate Risk</button>
+
+        <div id="results-display" class="results-box">
+            No scans captured yet. Follow instructions above.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Load MediaPipe dependencies -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script>
+    const video = document.getElementById('video-feed');
+    const snapCanvas = document.getElementById('snapshot-canvas');
+    const snapCtx = snapCanvas.getContext('2d');
+    const landmarkCanvas = document.getElementById('landmark-canvas');
+    const landmarkCtx = landmarkCanvas.getContext('2d');
+    
+    const cameraStatus = document.getElementById('camera-status');
+    const captureBtn = document.getElementById('btn-capture');
+    const resetBtn = document.getElementById('btn-reset');
+    const calcBtn = document.getElementById('btn-calculate');
+    const resultsDisplay = document.getElementById('results-display');
+    const stepTitle = document.getElementById('step-title');
+    const stepDesc = document.getElementById('step-desc');
+
+    const steps = ['palm', 'nail', 'conjunctiva'];
+    let currentStepIndex = 0;
+    let scansData = { palm: null, nail: null, conjunctiva: null };
+
+    // Load preferred camera device
+    const preferredCameraId = localStorage.getItem('sehatsaathi_preferred_camera');
+    let cameraHelper = null;
+
+    function resizeLandmarkCanvas() {
+        landmarkCanvas.width = video.videoWidth || 640;
+        landmarkCanvas.height = video.videoHeight || 480;
+    }
+
+    // MediaPipe Hand Detector
+    const handDetector = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    handDetector.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.5
+    });
+
+    // MediaPipe Face Mesh Detector
+    const faceDetector = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+    faceDetector.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.5
+    });
+
+    // Drawing loops
+    function onHandResults(results) {
+        landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
+        
+        const mode = steps[currentStepIndex];
+        if (mode !== 'palm' && mode !== 'nail') return;
+        
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            cameraStatus.className = 'status-indicator status-detected';
+            cameraStatus.innerText = `✓ HAND DETECTED — POSITION FOR ${mode.toUpperCase()} SCAN`;
+            
+            const landmarks = results.multiHandLandmarks[0];
+            const w = landmarkCanvas.width;
+            const h = landmarkCanvas.height;
+            
+            if (mode === 'palm') {
+                // Palm center landmarks: 0 (wrist), 5, 9, 13, 17 (finger bases)
+                const palmIndices = [0, 5, 9, 13, 17];
+                const xs = palmIndices.map(idx => landmarks[idx].x * w);
+                const ys = palmIndices.map(idx => landmarks[idx].y * h);
+                
+                const x_min = Math.min(...xs);
+                const x_max = Math.max(...xs);
+                const y_min = Math.min(...ys);
+                const y_max = Math.max(...ys);
+                
+                // Mirror the negative margin of -20 used in Python backend, with safety boundaries
+                const cx = (x_min + x_max) / 2;
+                const cy = (y_min + y_max) / 2;
+                const x1 = Math.min(x_min + 20, cx - 12);
+                const y1 = Math.min(y_min + 20, cy - 12);
+                const x2 = Math.max(x_max - 20, cx + 12);
+                const y2 = Math.max(y_max - 20, cy + 12);
+                
+                // Draw palm center keypoints in red
+                palmIndices.forEach(idx => {
+                    const lm = landmarks[idx];
+                    landmarkCtx.beginPath();
+                    landmarkCtx.arc(lm.x * w, lm.y * h, 6, 0, 2 * Math.PI);
+                    landmarkCtx.fillStyle = '#FF3333';
+                    landmarkCtx.fill();
+                });
+                
+                // Draw Palm ROI box in red
+                if (x2 > x1 && y2 > y1) {
+                    landmarkCtx.strokeStyle = '#FF3333';
+                    landmarkCtx.lineWidth = 3;
+                    landmarkCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                    
+                    // Add unmirrored HUD label inside box
+                    landmarkCtx.save();
+                    landmarkCtx.translate(w, 0);
+                    landmarkCtx.scale(-1, 1);
+                    landmarkCtx.fillStyle = '#FF3333';
+                    landmarkCtx.font = '14px Outfit';
+                    landmarkCtx.textAlign = 'right';
+                    landmarkCtx.fillText("PALM ROI", w - x1 - 10, y1 + 20);
+                    landmarkCtx.restore();
+                }
+            } else if (mode === 'nail') {
+                // Draw circles on fingertips (4, 8, 12, 16, 20)
+                const tips = [4, 8, 12];
+                tips.forEach(idx => {
+                    const lm = landmarks[idx];
+                    const x = lm.x * w;
+                    const y = lm.y * h;
+                    
+                    // Draw fingertip box matching backend size (ns = 12)
+                    const ns = 12;
+                    landmarkCtx.strokeStyle = '#FF3333';
+                    landmarkCtx.lineWidth = 2.5;
+                    landmarkCtx.strokeRect(x - ns, y - ns, ns * 2, ns * 2);
+                    
+                    landmarkCtx.beginPath();
+                    landmarkCtx.arc(x, y, 6, 0, 2 * Math.PI);
+                    landmarkCtx.fillStyle = '#FF3333';
+                    landmarkCtx.fill();
+                });
+                
+                landmarkCtx.save();
+                landmarkCtx.translate(w, 0);
+                landmarkCtx.scale(-1, 1);
+                landmarkCtx.fillStyle = '#FF3333';
+                landmarkCtx.font = '14px Outfit';
+                landmarkCtx.textAlign = 'left';
+                tips.forEach(idx => {
+                    const lm = landmarks[idx];
+                    landmarkCtx.fillText("Nail ROI", w - (lm.x * w) + 18, (lm.y * h) + 5);
+                });
+                landmarkCtx.restore();
+            }
+        } else {
+            cameraStatus.className = 'status-indicator status-scanning';
+            cameraStatus.innerText = `⏳ ALIGN HAND IN FRAME FOR ${mode.toUpperCase()} SCAN`;
+        }
+    }
+
+    function onFaceResults(results) {
+        landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
+        
+        const mode = steps[currentStepIndex];
+        if (mode !== 'conjunctiva') return;
+        
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+            cameraStatus.className = 'status-indicator status-detected';
+            cameraStatus.innerText = '✓ FACE DETECTED — POSITION FOR CONJUNCTIVA SCAN';
+            
+            const landmarks = results.multiFaceLandmarks[0];
+            const w = landmarkCanvas.width;
+            const h = landmarkCanvas.height;
+            
+            // Lower eyelid landmarks (145 to 152) and Sclera (33, 133, 362, 263)
+            const eyelidIndices = [145, 146, 147, 148, 149, 150, 151, 152];
+            const scleraIndices = [33, 133, 362, 263];
+            
+            // Draw eyelid highlights
+            eyelidIndices.forEach(idx => {
+                const lm = landmarks[idx];
+                landmarkCtx.beginPath();
+                landmarkCtx.arc(lm.x * w, lm.y * h, 3, 0, 2 * Math.PI);
+                landmarkCtx.fillStyle = '#FF3333';
+                landmarkCtx.fill();
+            });
+            
+            // Eyelid bounding box (margin = 3)
+            const eyeXs = eyelidIndices.map(idx => landmarks[idx].x * w);
+            const eyeYs = eyelidIndices.map(idx => landmarks[idx].y * h);
+            const ex_min = Math.min(...eyeXs);
+            const ex_max = Math.max(...eyeXs);
+            const ey_min = Math.min(...eyeYs);
+            const ey_max = Math.max(...eyeYs);
+            
+            const emargin = 3;
+            const ex1 = Math.max(0, ex_min - emargin);
+            const ey1 = Math.max(0, ey_min - emargin);
+            const ex2 = Math.min(w, ex_max + emargin);
+            const ey2 = Math.min(h, ey_max + emargin);
+            
+            if (ex2 > ex1 && ey2 > ey1) {
+                landmarkCtx.strokeStyle = '#FF3333';
+                landmarkCtx.lineWidth = 2;
+                landmarkCtx.strokeRect(ex1, ey1, ex2 - ex1, ey2 - ey1);
+                
+                landmarkCtx.save();
+                landmarkCtx.translate(w, 0);
+                landmarkCtx.scale(-1, 1);
+                landmarkCtx.fillStyle = '#FF3333';
+                landmarkCtx.font = '12px Outfit';
+                landmarkCtx.textAlign = 'right';
+                landmarkCtx.fillText("CONJUNCTIVA", w - ex1 - 5, ey1 - 5);
+                landmarkCtx.restore();
+            }
+            
+            // Sclera bounding box (margin = 2)
+            const scXs = scleraIndices.map(idx => landmarks[idx].x * w);
+            const scYs = scleraIndices.map(idx => landmarks[idx].y * h);
+            const sx_min = Math.min(...scXs);
+            const sx_max = Math.max(...scXs);
+            const sy_min = Math.min(...scYs);
+            const sy_max = Math.max(...scYs);
+            
+            const semargin = 2;
+            const sx1 = Math.max(0, sx_min - semargin);
+            const sy1 = Math.max(0, sy_min - semargin);
+            const sx2 = Math.min(w, sx_max + semargin);
+            const sy2 = Math.min(h, sy_max + semargin);
+            
+            if (sx2 > sx1 && sy2 > sy1) {
+                landmarkCtx.strokeStyle = '#FF3333';
+                landmarkCtx.lineWidth = 2;
+                landmarkCtx.strokeRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
+                
+                landmarkCtx.save();
+                landmarkCtx.translate(w, 0);
+                landmarkCtx.scale(-1, 1);
+                landmarkCtx.fillStyle = '#FF3333';
+                landmarkCtx.font = '12px Outfit';
+                landmarkCtx.textAlign = 'left';
+                landmarkCtx.fillText("SCLERA REF", w - sx2 + 5, sy1 - 5);
+                landmarkCtx.restore();
+            }
+        } else {
+            cameraStatus.className = 'status-indicator status-scanning';
+            cameraStatus.innerText = '⏳ ALIGN FACE IN FRAME FOR CONJUNCTIVA SCAN';
+        }
+    }
+
+    handDetector.onResults(onHandResults);
+    faceDetector.onResults(onFaceResults);
+
+    // Start video feed
+    async function startCamera() {
+        try {
+            const constraints = {
+                video: preferredCameraId ? { deviceId: { exact: preferredCameraId } } : true,
+                audio: false
+            };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                captureBtn.removeAttribute('disabled');
+                cameraStatus.className = 'status-indicator status-detected';
+                cameraStatus.innerText = '✓ CAMERA READY — POSITION FOR PALM SCAN';
+                
+                // Set canvas size matching feed
+                snapCanvas.width = video.videoWidth || 640;
+                snapCanvas.height = video.videoHeight || 480;
+                resizeLandmarkCanvas();
+            };
+
+            cameraHelper = new Camera(video, {
+                onFrame: async () => {
+                    resizeLandmarkCanvas();
+                    const mode = steps[currentStepIndex];
+                    if (mode === 'palm' || mode === 'nail') {
+                        await handDetector.send({ image: video });
+                    } else if (mode === 'conjunctiva') {
+                        await faceDetector.send({ image: video });
+                    }
+                },
+                width: 640,
+                height: 480
+            });
+            cameraHelper.start();
+        } catch (err) {
+            console.error('Camera stream failed:', err);
+            cameraStatus.className = 'status-indicator status-scanning';
+            cameraStatus.innerText = '❌ CAMERA ERROR: ' + err.message;
+        }
+    }
+
+    startCamera();
+
+    function updateStepUI() {
+        landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
+        const mode = steps[currentStepIndex];
+        stepTitle.innerText = `Current Step: ${mode.charAt(0).toUpperCase() + mode.slice(1)} Scan`;
+        
+        if (mode === 'palm') {
+            stepDesc.innerText = 'Position your palm flat in the camera frame. Keep it steady.';
+            document.getElementById('check-palm').className = 'checklist-item current';
+            document.getElementById('check-nail').className = 'checklist-item';
+            document.getElementById('check-conjunctiva').className = 'checklist-item';
+            cameraStatus.innerText = '✓ CAMERA READY — POSITION FOR PALM SCAN';
+        } else if (mode === 'nail') {
+            stepDesc.innerText = 'Position your hand so that your fingernails are visible in the frame.';
+            document.getElementById('check-palm').className = 'checklist-item checked';
+            document.getElementById('check-nail').className = 'checklist-item current';
+            document.getElementById('check-conjunctiva').className = 'checklist-item';
+            cameraStatus.innerText = '✓ CAMERA READY — POSITION FOR NAIL SCAN';
+        } else if (mode === 'conjunctiva') {
+            stepDesc.innerText = 'Look directly into the camera and pull down your lower eyelid slightly.';
+            document.getElementById('check-palm').className = 'checklist-item checked';
+            document.getElementById('check-nail').className = 'checklist-item checked';
+            document.getElementById('check-conjunctiva').className = 'checklist-item current';
+            cameraStatus.innerText = '✓ CAMERA READY — POSITION FOR CONJUNCTIVA SCAN';
+        }
+    }
+
+    captureBtn.addEventListener('click', async () => {
+        const mode = steps[currentStepIndex];
+        cameraStatus.innerText = `🔬 PROCESSING ${mode.toUpperCase()} SCAN...`;
+
+        // Capture snapshot from video feed
+        snapCtx.save();
+        snapCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+        snapCtx.restore();
+
+        const imageBase64 = snapCanvas.toDataURL('image/jpeg', 0.9);
+
+        try {
+            const response = await fetch('/api/anemia/frame', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageBase64, scan_type: mode })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                alert(data.error);
+                cameraStatus.innerText = '❌ DETECTION FAILED — TRY AGAIN';
+                return;
+            }
+
+            scansData[mode] = data;
+            
+            // Show preview of the marked ROI
+            if (data.marked_image) {
+                const previewImg = document.getElementById('capture-preview');
+                previewImg.src = data.marked_image;
+                previewImg.style.display = 'block';
+                setTimeout(() => {
+                    previewImg.style.display = 'none';
+                }, 1800);
+            }
+            
+            // Append to results
+            if (currentStepIndex === 0) resultsDisplay.innerHTML = '';
+            resultsDisplay.innerHTML += `✓ ${mode.toUpperCase()} SCAN CAPTURED:\n` +
+                                         `  • Score: ${data.risk_score.toFixed(2)}/5.0\n` +
+                                         `  • Red Ratio: ${data.red_ratio.toFixed(4)}\n` +
+                                         `  • RGB Color: R:${data.rgb[0]} G:${data.rgb[1]} B:${data.rgb[2]}\n\n`;
+
+            if (currentStepIndex < steps.length - 1) {
+                currentStepIndex++;
+                updateStepUI();
+            } else {
+                // Done all scans
+                document.getElementById('check-conjunctiva').className = 'checklist-item checked';
+                cameraStatus.className = 'status-indicator status-detected';
+                cameraStatus.innerText = '✓ ALL SCANS CAPTURED';
+                captureBtn.setAttribute('disabled', 'true');
+                calcBtn.removeAttribute('disabled');
+            }
+        } catch (err) {
+            console.error('Frame analysis failed:', err);
+            cameraStatus.innerText = '❌ SERVER ERROR';
+        }
+    });
+
+    resetBtn.addEventListener('click', () => {
+        currentStepIndex = 0;
+        scansData = { palm: null, nail: null, conjunctiva: null };
+        captureBtn.removeAttribute('disabled');
+        calcBtn.setAttribute('disabled', 'true');
+        document.getElementById('capture-preview').style.display = 'none';
+        resultsDisplay.innerHTML = 'No scans captured yet. Follow instructions above.';
+        updateStepUI();
+    });
+
+    calcBtn.addEventListener('click', async () => {
+        const completedScans = Object.values(scansData).filter(x => x !== null).length;
+        if (completedScans < 3) {
+            alert('Please capture all 3 scans (Palm, Nail, and Conjunctiva) before calculating risk.');
+            return;
+        }
+        try {
+            const response = await fetch('/api/anemia/overall', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ results: scansData })
+            });
+            const data = await response.json();
+
+            let bannerClass = 'risk-healthy';
+            if (data.risk_level === 'MILD') bannerClass = 'risk-mild';
+            else if (data.risk_level === 'MODERATE') bannerClass = 'risk-moderate';
+            else if (data.risk_level === 'SEVERE') bannerClass = 'risk-severe';
+
+            const summaryHtml = `
+This is a screening estimate, not a diagnosis. Please consult a doctor for confirmation.
+
+<div class="risk-banner ${bannerClass}" style="margin-top: 1rem;">
+    ANEMIA RISK: ${data.risk_level}<br>
+    <span style="font-size: 1rem; font-weight: 500;">Average Score: ${data.avg_score.toFixed(2)} / 5.0</span>
+</div>
+
+📊 DETAILED SCAN METRICS:
+${Object.keys(scansData).map(k => {
+    const s = scansData[k];
+    if (!s) return '';
+    return `  • ${k.toUpperCase()}: Score=${s.risk_score.toFixed(2)} | Red Ratio=${s.red_ratio.toFixed(4)} | RGB=(${s.rgb.join(',')})`;
+}).filter(x => x !== '').join('\n')}
+
+🔍 KEY FINDINGS:
+${data.warnings.map(w => `  • ${w}`).join('\n') || '  • No significant pallor detected.'}
+
+📋 RECOMMENDATIONS & MEDICAL WARNING:
+  • ${data.recommendation}
+  • ⚠️ WARNING: If you see abnormal scores or experience symptoms like fatigue, dizziness, or paleness, you should visit a qualified doctor or healthcare professional for a complete blood count (CBC) test.
+`;
+            resultsDisplay.innerHTML = summaryHtml;
+        } catch (err) {
+            console.error('Combined assessment failed:', err);
+            resultsDisplay.innerText = '❌ assessment error';
+        }
+    });
+</script>
+{% endblock %}
