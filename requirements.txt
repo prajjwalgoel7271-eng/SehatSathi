@@ -1,10 +1,11 @@
 Flask>=3.0
 gunicorn>=21.2
 opencv-python-headless>=4.10,<5.0
-mediapipe>=0.10.14
+mediapipe==0.10.14
 numpy>=1.26,<2.0
 matplotlib>=3.9
 librosa>=0.11
 scipy>=1.14
 scikit-learn>=1.5
 praat-parselmouth>=0.4.5
+protobuf==3.20.3
