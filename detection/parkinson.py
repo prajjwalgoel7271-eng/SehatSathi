@@ -246,6 +246,7 @@ def load_wav_file(file_obj_or_path):
 
 def analyze_voice_audio(audio_path_or_bytes, sample_rate=22050):
     """Analyze voice audio file. Returns dict with score, raw metrics, plot."""
+    print("DEBUG: analyze_voice_audio EXECUTING - parselmouth version", flush=True)
     try:
         y, sr = load_wav_file(audio_path_or_bytes)
     except Exception as e:
