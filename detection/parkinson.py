@@ -279,7 +279,10 @@ def analyze_voice_audio(audio_path_or_bytes, sample_rate=22050):
     rms_frames = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
     
     # Align RMS frames with voiced frames
-    voiced_rms = rms_frames[voiced_flag[:len(rms_frames)]]
+    min_len = min(len(rms_frames), len(voiced_flag))
+    rms_frames = rms_frames[:min_len]
+    voiced_flag = voiced_flag[:min_len]
+    voiced_rms = rms_frames[voiced_flag]
     if len(voiced_rms) > 2:
         rms_diffs = np.abs(np.diff(voiced_rms))
         shimmer = (np.mean(rms_diffs) / (np.mean(voiced_rms) + 1e-8)) * 100.0
