@@ -11,6 +11,8 @@ import json
 import base64
 import traceback
 import tempfile
+import subprocess
+import imageio_ffmpeg
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 
 from detection.parkinson import (
@@ -120,7 +122,8 @@ def api_parkinson_motor():
 
 @app.route("/api/parkinson/voice", methods=["POST"])
 def api_parkinson_voice():
-    temp_path = None
+    input_temp_path = None
+    output_temp_path = None
     try:
         print("api_parkinson_voice: Received voice audio upload request.")
         if "audio" not in request.files:
@@ -128,16 +131,38 @@ def api_parkinson_voice():
             return jsonify({"error": "No audio file provided"}), 400
         
         audio_file = request.files["audio"]
+        print(f"api_parkinson_voice: Received file '{audio_file.filename}'. Saving raw upload to temp webm/opus file...")
         
-        # Write to a temp file in the OS temp directory
-        temp_dir = tempfile.gettempdir()
-        temp_path = os.path.join(temp_dir, f"ss_voice_{os.urandom(8).hex()}.wav")
-        print(f"api_parkinson_voice: Saving audio file to temp path: {temp_path}")
-        audio_file.save(temp_path)
+        # Get bundled static ffmpeg exe path
+        FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        # Save raw audio to a temporary input file
+        input_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
+        input_temp_path = input_temp.name
+        audio_file.save(input_temp_path)
+        input_temp.close()
+        print(f"api_parkinson_voice: Saved input webm/opus to '{input_temp_path}'.")
+        
+        # Create a temporary output WAV file path
+        output_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        output_temp_path = output_temp.name
+        output_temp.close()
+        print(f"api_parkinson_voice: Prepared output wav path '{output_temp_path}'.")
+        
+        # Run conversion to 44100 Hz WAV using ffmpeg subprocess
+        print(f"api_parkinson_voice: Converting from webm/opus to WAV using subprocess/ffmpeg...")
+        subprocess.run([
+            FFMPEG_PATH,
+            "-i", input_temp_path,
+            "-ar", "44100",
+            output_temp_path,
+            "-y"
+        ], check=True, capture_output=True)
+        print(f"api_parkinson_voice: Successfully converted to WAV.")
         
         # Call voice analysis logic
-        print("api_parkinson_voice: Running voice analysis...")
-        result = analyze_voice_audio(temp_path)
+        print("api_parkinson_voice: Passing wav temp path to analysis...")
+        result = analyze_voice_audio(output_temp_path)
         
         if result and "error" in result:
             print(f"api_parkinson_voice: Analysis returned error: {result['error']}")
@@ -156,12 +181,13 @@ def api_parkinson_voice():
             "detail": str(e)
         }), 500
     finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                print(f"api_parkinson_voice: Cleaning up temp file: {temp_path}")
-                os.remove(temp_path)
-            except Exception as cleanup_err:
-                print(f"api_parkinson_voice: Failed to delete temp file {temp_path}: {cleanup_err}", file=sys.stderr)
+        for path in [input_temp_path, output_temp_path]:
+            if path and os.path.exists(path):
+                try:
+                    print(f"api_parkinson_voice: Cleaning up temp file: {path}")
+                    os.remove(path)
+                except Exception as cleanup_err:
+                    print(f"api_parkinson_voice: Failed to delete temp file {path}: {cleanup_err}", file=sys.stderr)
 
 @app.route("/api/parkinson/spiral", methods=["POST"])
 def api_parkinson_spiral():
@@ -227,7 +253,8 @@ def api_anemia_overall():
 
 @app.route("/api/tb/analyze", methods=["POST"])
 def api_tb_analyze():
-    temp_path = None
+    input_temp_path = None
+    output_temp_path = None
     try:
         print("api_tb_analyze: Received TB cough audio upload request.")
         if "audio" not in request.files:
@@ -235,16 +262,38 @@ def api_tb_analyze():
             return jsonify({"error": "No audio file provided"}), 400
         
         audio_file = request.files["audio"]
+        print(f"api_tb_analyze: Received file '{audio_file.filename}'. Saving raw upload to temp webm/opus file...")
         
-        # Write to a temp file in the OS temp directory
-        temp_dir = tempfile.gettempdir()
-        temp_path = os.path.join(temp_dir, f"ss_tb_{os.urandom(8).hex()}.wav")
-        print(f"api_tb_analyze: Saving audio file to temp path: {temp_path}")
-        audio_file.save(temp_path)
+        # Get bundled static ffmpeg exe path
+        FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+        
+        # Save raw audio to a temporary input file
+        input_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
+        input_temp_path = input_temp.name
+        audio_file.save(input_temp_path)
+        input_temp.close()
+        print(f"api_tb_analyze: Saved input webm/opus to '{input_temp_path}'.")
+        
+        # Create a temporary output WAV file path
+        output_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        output_temp_path = output_temp.name
+        output_temp.close()
+        print(f"api_tb_analyze: Prepared output wav path '{output_temp_path}'.")
+        
+        # Run conversion to 44100 Hz WAV using ffmpeg subprocess
+        print(f"api_tb_analyze: Converting from webm/opus to WAV using subprocess/ffmpeg...")
+        subprocess.run([
+            FFMPEG_PATH,
+            "-i", input_temp_path,
+            "-ar", "44100",
+            output_temp_path,
+            "-y"
+        ], check=True, capture_output=True)
+        print(f"api_tb_analyze: Successfully converted to WAV.")
         
         # Call cough analysis logic
-        print("api_tb_analyze: Running TB analysis...")
-        with open(temp_path, "rb") as f:
+        print("api_tb_analyze: Passing wav temp path to analysis...")
+        with open(output_temp_path, "rb") as f:
             result = analyze_cough_audio(f)
             
         if result and "error" in result:
@@ -264,12 +313,13 @@ def api_tb_analyze():
             "detail": str(e)
         }), 500
     finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                print(f"api_tb_analyze: Cleaning up temp file: {temp_path}")
-                os.remove(temp_path)
-            except Exception as cleanup_err:
-                print(f"api_tb_analyze: Failed to delete temp file {temp_path}: {cleanup_err}", file=sys.stderr)
+        for path in [input_temp_path, output_temp_path]:
+            if path and os.path.exists(path):
+                try:
+                    print(f"api_tb_analyze: Cleaning up temp file: {path}")
+                    os.remove(path)
+                except Exception as cleanup_err:
+                    print(f"api_tb_analyze: Failed to delete temp file {path}: {cleanup_err}", file=sys.stderr)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
