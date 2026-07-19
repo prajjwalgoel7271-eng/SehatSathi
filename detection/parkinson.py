@@ -10,9 +10,8 @@ from sklearn.neighbors import KNeighborsClassifier
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import parselmouth
-from parselmouth.praat import call
 import librosa
+import parselmouth
 
 # ── Thresholds (EXACT copy from Parkinson1.py) ──────────────────────────────
 TH_JITTER_PCT = 1.04
@@ -72,9 +71,9 @@ def _extract_spiral_features(points, mean_dev=None, std_dev=None):
             return None
         pts_norm = pts_centered / max_r
         radii_norm = radii / max_r
+        ideal_norm = np.linspace(radii_norm[0], radii_norm[-1], len(radii_norm))
+        deviation_norm = radii_norm - ideal_norm
         if mean_dev is None or std_dev is None:
-            ideal_norm = np.linspace(radii_norm[0], radii_norm[-1], len(radii_norm))
-            deviation_norm = radii_norm - ideal_norm
             mean_dev = np.mean(np.abs(deviation_norm))
             std_dev = np.std(deviation_norm)
         fft_vals = np.abs(np.fft.rfft(deviation_norm - np.mean(deviation_norm)))
@@ -211,33 +210,104 @@ def analyze_motor_data(distances, timestamps):
 
 # ── Voice analysis ───────────────────────────────────────────────────────────
 
+def load_wav_file(file_obj_or_path):
+    import wave
+    import numpy as np
+    
+    if isinstance(file_obj_or_path, str):
+        wav = wave.open(file_obj_or_path, 'rb')
+    else:
+        file_obj_or_path.seek(0)
+        wav = wave.open(file_obj_or_path, 'rb')
+        
+    try:
+        n_channels = wav.getnchannels()
+        sampwidth = wav.getsampwidth()
+        framerate = wav.getframerate()
+        n_frames = wav.getnframes()
+        content = wav.readframes(n_frames)
+    finally:
+        wav.close()
+        
+    if sampwidth == 2:
+        data = np.frombuffer(content, dtype=np.int16)
+        data = data.astype(np.float32) / 32768.0
+    elif sampwidth == 1:
+        data = np.frombuffer(content, dtype=np.uint8)
+        data = data.astype(np.float32) / 128.0 - 1.0
+    else:
+        raise ValueError(f"Unsupported sample width: {sampwidth}")
+        
+    if n_channels > 1:
+        data = data.reshape(-1, n_channels).mean(axis=1)
+        
+    return data, framerate
+
+
 def analyze_voice_audio(audio_path_or_bytes, sample_rate=22050):
     """Analyze voice audio file. Returns dict with score, raw metrics, plot."""
     try:
-        if isinstance(audio_path_or_bytes, str):
-            y, sr = librosa.load(audio_path_or_bytes, sr=sample_rate)
-        else:
-            y, sr = librosa.load(audio_path_or_bytes, sr=sample_rate)
+        y, sr = load_wav_file(audio_path_or_bytes)
     except Exception as e:
         return {'score': 0.0, 'error': f'Could not load audio: {e}'}
 
     fs = sr
+    
+    # 1. Pitch contour tracking (F0)
+    # We call parselmouth (Praat) for robust, numba-free pitch tracking
     snd = parselmouth.Sound(y, sampling_frequency=fs)
-    pitch = call(snd, "To Pitch", 0.0, 75, 500)
-    point_process = call(snd, "To PointProcess (periodic, cc)", 75, 500)
-
-    try:
-        jitter = call(point_process, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3) * 100
-    except Exception:
+    pitch = snd.to_pitch(time_step=0.02, pitch_floor=50.0, pitch_ceiling=500.0)
+    frequencies = pitch.selected_array['frequency']
+    f0 = np.array([f if f > 0.0 else np.nan for f in frequencies])
+    voiced_flag = frequencies > 0.0
+    times = pitch.xs()
+    duration = len(y) / fs
+    
+    # 2. Extract periods and compute jitter
+    voiced_f0 = f0[~np.isnan(f0)]
+    if len(voiced_f0) > 2:
+        periods = 1.0 / voiced_f0
+        period_diffs = np.abs(np.diff(periods))
+        jitter = (np.mean(period_diffs) / np.mean(periods)) * 100.0
+    else:
         jitter = 0.0
-    try:
-        shimmer = call([snd, point_process], "Get shimmer (local)", 0, 0, 0.0001, 0.02, 1.3, 1.6) * 100
-    except Exception:
+        
+    # 3. Extract amplitudes and compute shimmer
+    # Compute RMS amplitude of the signal over hop size blocks
+    frame_length = int(0.04 * fs)
+    hop_length = int(0.02 * fs)
+    rms_frames = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
+    
+    # Align RMS frames with voiced frames
+    voiced_rms = rms_frames[voiced_flag[:len(rms_frames)]]
+    if len(voiced_rms) > 2:
+        rms_diffs = np.abs(np.diff(voiced_rms))
+        shimmer = (np.mean(rms_diffs) / (np.mean(voiced_rms) + 1e-8)) * 100.0
+    else:
         shimmer = 0.0
-    try:
-        harmonicity = call(snd, "To Harmonicity (cc)", 0.01, 75, 0.1, 1.0)
-        hnr = call(harmonicity, "Get mean", 0, 0)
-    except Exception:
+        
+    # 4. Compute HNR (Harmonics-to-Noise Ratio)
+    # Average HNR computed from cross-correlation of voiced frames
+    r_vals = []
+    for i in range(len(voiced_f0)):
+        f = voiced_f0[i]
+        lag = int(fs / f)
+        time_sec = times[i]
+        center_sample = int(time_sec * fs)
+        start = max(0, center_sample - int(1.5 * lag))
+        end = min(len(y), center_sample + int(1.5 * lag))
+        frame = y[start:end]
+        if len(frame) > 2 * lag:
+            c0 = np.sum(frame * frame)
+            clag = np.sum(frame[:-lag] * frame[lag:])
+            denom = np.sqrt(np.sum(frame[:-lag]**2) * np.sum(frame[lag:]**2)) + 1e-8
+            r = clag / denom
+            r_vals.append(max(0.01, min(0.99, r)))
+            
+    if r_vals:
+        mean_r = np.mean(r_vals)
+        hnr = 10.0 * np.log10(mean_r / (1.0 - mean_r + 1e-8))
+    else:
         hnr = 25.0
 
     score = 100.0
@@ -250,12 +320,10 @@ def analyze_voice_audio(audio_path_or_bytes, sample_rate=22050):
     score = max(0.0, min(100.0, score))
 
     # Plot
-    f0, voiced_flag, voiced_probs = librosa.pyin(y, fmin=50, fmax=500, sr=fs)
-    times = librosa.times_like(f0)
-    duration = len(y) / fs
-
     plt.style.use('dark_background')
     fig, axes = plt.subplots(3, 1, figsize=(10, 8))
+    
+    # Avoid errors if f0 is completely empty/NaN
     axes[0].plot(times, f0, 'lime', linewidth=2)
     axes[0].set_title("Voice Pitch Over Time"); axes[0].set_xlabel("Time (s)"); axes[0].set_ylabel("Frequency (Hz)")
     axes[0].grid(True, alpha=0.3)

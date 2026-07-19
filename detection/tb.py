@@ -125,10 +125,44 @@ def analyze_cough(audio_signal, sample_rate=44100):
     }
 
 
+def load_wav_file(file_obj_or_path):
+    import wave
+    import numpy as np
+    
+    if isinstance(file_obj_or_path, str):
+        wav = wave.open(file_obj_or_path, 'rb')
+    else:
+        file_obj_or_path.seek(0)
+        wav = wave.open(file_obj_or_path, 'rb')
+        
+    try:
+        n_channels = wav.getnchannels()
+        sampwidth = wav.getsampwidth()
+        framerate = wav.getframerate()
+        n_frames = wav.getnframes()
+        content = wav.readframes(n_frames)
+    finally:
+        wav.close()
+        
+    if sampwidth == 2:
+        data = np.frombuffer(content, dtype=np.int16)
+        data = data.astype(np.float32) / 32768.0
+    elif sampwidth == 1:
+        data = np.frombuffer(content, dtype=np.uint8)
+        data = data.astype(np.float32) / 128.0 - 1.0
+    else:
+        raise ValueError(f"Unsupported sample width: {sampwidth}")
+        
+    if n_channels > 1:
+        data = data.reshape(-1, n_channels).mean(axis=1)
+        
+    return data, framerate
+
+
 def analyze_cough_audio(audio_file_obj):
     """Load audio from a file-like object and analyze it."""
     try:
-        y, sr = librosa.load(audio_file_obj, sr=RATE)
+        y, sr = load_wav_file(audio_file_obj)
     except Exception as e:
         return {'error': f'Could not load audio: {e}', 'cough_count': 0}
     return analyze_cough(y, sr)
